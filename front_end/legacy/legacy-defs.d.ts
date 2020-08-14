@@ -1,10 +1,13 @@
 // Copyright 2020 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-
 interface StringConstructor {
   sprintf(format: string, ...var_arg: any): string;
   hashCode(id: string): number;
+}
+
+interface Window {
+  UI: {themeSupport: unknown}
 }
 
 interface Array<T> {
@@ -22,6 +25,7 @@ interface String {
   trimEndWithMaxLength(maxLength: number): string;
   escapeForRegExp(): string;
   filterRegex(query: string): RegExp;
+  trimMiddle(maxLength: number): string;
 }
 
 interface NumberConstructor {
@@ -34,7 +38,13 @@ declare namespace Runtime {
   const cachedResources: {[cachePath: string]: string};
 }
 
-declare class AnchorBox {}
+declare class AnchorBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  relativeToElement(element: Element): AnchorBox;
+}
 
 declare namespace Adb {
   interface Page {
@@ -84,6 +94,10 @@ declare namespace Adb {
   type NetworkDiscoveryConfig = string[];
 }
 
+interface Document {
+  deepActiveElement(): Element|null;
+}
+
 interface HTMLElement {
   createChild(tagName: string, className?: string, content?: string): HTMLElement;
   createSVGChild(childType: string, className?: string): HTMLElement;
@@ -92,16 +106,29 @@ interface HTMLElement {
 interface Element {
   createChild(tagName: string, className?: string, content?: string): Element;
   createTextChild(text: string): Text;
+  hasFocus(): boolean;
+  positionAt(x: (number|undefined), y: (number|undefined), relativeTo?: Element): void;
   removeChildren(): void;
+}
+
+interface DocumentFragment {
+  createChild(tagName: string, className?: string, content?: string): Element;
 }
 
 interface Event {
   consume(preventDefault: boolean): void;
+  deepElementFromPoint(): Node|null;
 }
 
 interface Node {
   getComponentSelection(): Selection|null;
+  hasSameShadowRoot(other: Node): boolean;
+  isSelfOrAncestor(node: Node|null): boolean;
+  parentElementOrShadowHost(): Element|null;
+  parentNodeOrShadowHost(): Node|null;
+  traverseNextNode(stayWithin?: Node): Node|null;
 }
 
 declare function isEnterKey(event: Event): boolean;
+declare function isEnterOrSpaceKey(event: Event): boolean;
 declare function createPlainTextSearchRegex(query: string, flags?: string): RegExp;

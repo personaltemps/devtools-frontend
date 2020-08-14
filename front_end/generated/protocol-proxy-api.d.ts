@@ -706,9 +706,17 @@ declare namespace ProtocolProxyApi {
 
     /**
      * Returns the root DOM node (and optionally the subtree) to the caller.
+     * Deprecated, as it is not designed to work well with the rest of the DOM agent.
+     * Use DOMSnapshot.captureSnapshot instead.
      */
     invoke_getFlattenedDocument(params: Protocol.DOM.GetFlattenedDocumentRequest):
         Promise<Protocol.DOM.GetFlattenedDocumentResponse>;
+
+    /**
+     * Finds nodes with a given computed style in a subtree.
+     */
+    invoke_getNodesForSubtreeByStyle(params: Protocol.DOM.GetNodesForSubtreeByStyleRequest):
+        Promise<Protocol.DOM.GetNodesForSubtreeByStyleResponse>;
 
     /**
      * Returns node id at given location. Depending on whether DOM domain is enabled, nodeId is
@@ -3345,7 +3353,7 @@ declare namespace ProtocolProxyApi {
     /**
      * Steps over the statement.
      */
-    invoke_stepOver(): Promise<Protocol.ProtocolResponseWithError>;
+    invoke_stepOver(params: Protocol.Debugger.StepOverRequest): Promise<Protocol.ProtocolResponseWithError>;
   }
   export interface DebuggerDispatcher extends Protocol.Dispatcher {
     /**

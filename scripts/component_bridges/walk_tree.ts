@@ -5,6 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
+import {findNodeForTypeReferenceName} from './utils';
 
 interface ExternalImport {
   namedImports: Set<string>;
@@ -17,7 +18,8 @@ export interface WalkerState {
    * overhead of an extra piece of state and another set to check isn't worth it
    */
   foundInterfaces: Set<ts.InterfaceDeclaration|ts.TypeAliasDeclaration>;
-  interfaceNamesToConvert: Set<string>;
+  foundEnums: Set<ts.EnumDeclaration>;
+  typeReferencesToConvert: Set<string>;
   componentClass?: ts.ClassDeclaration;
   publicMethods: Set<ts.MethodDeclaration>;
   customElementsDefineCall?: ts.ExpressionStatement;
@@ -54,6 +56,7 @@ export const nodeIsReadOnlyArrayInterfaceReference = (node: ts.Node): node is ts
   return ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName) &&
       node.typeName.escapedText === 'ReadonlyArray';
 };
+
 /* takes a type and checks if it's either an array of interfaces or an interface
  * e.g, we're looking for: Array<Foo> or Foo
  * and not for primitives like string, number, etc
@@ -61,7 +64,7 @@ export const nodeIsReadOnlyArrayInterfaceReference = (node: ts.Node): node is ts
  * This is so we gather a list of all user defined type references that we might need
  * to convert into Closure typedefs.
  */
-const findInterfacesFromType = (node: ts.Node): Set<string> => {
+const findTypeReferencesWithinNode = (node: ts.Node): Set<string> => {
   const foundInterfaces = new Set<string>();
 
   /*
@@ -72,31 +75,26 @@ const findInterfacesFromType = (node: ts.Node): Set<string> => {
     if (!node.typeArguments) {
       throw new Error('Found ReadOnly interface with no type arguments; invalid TS detected.');
     }
-    return findInterfacesFromType(node.typeArguments[0]);
+    return findTypeReferencesWithinNode(node.typeArguments[0]);
   }
 
   if (ts.isArrayTypeNode(node) && ts.isTypeReferenceNode(node.elementType) &&
       ts.isIdentifier(node.elementType.typeName)) {
     foundInterfaces.add(node.elementType.typeName.escapedText.toString());
 
-  } else if (ts.isTypeReferenceNode(node)) {
-    if (!ts.isIdentifier(node.typeName)) {
-      /*
-      * This means that an interface is being referenced via a qualifier, e.g.:
-      * `Interfaces.Person` rather than `Person`.
-      * We don't support this - all interfaces must be referenced directly.
-      */
-      throw new Error(
-          'Found an interface that was referenced indirectly. You must reference interfaces directly, rather than via a qualifier. For example, `Person` rather than `Foo.Person`');
-    }
+  } else if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
     foundInterfaces.add(node.typeName.escapedText.toString());
+  } else if (ts.isTypeReferenceNode(node) && ts.isQualifiedName(node.typeName)) {
+    // We will need only the left type to support enum member references (e.g., 'MyEnum.Member').
+    const left = node.typeName.left;
+    foundInterfaces.add((left as ts.Identifier).escapedText.toString());
   } else if (ts.isUnionTypeNode(node)) {
     /**
      * If the param is something like `x: Foo|null` we want to loop over each type
      * because we need to pull the `Foo` out.
      */
     node.types.forEach(unionTypeMember => {
-      findInterfacesFromType(unionTypeMember).forEach(i => foundInterfaces.add(i));
+      findTypeReferencesWithinNode(unionTypeMember).forEach(i => foundInterfaces.add(i));
     });
   } else if (ts.isTypeLiteralNode(node)) {
     /* type literal here means it's an object: data: { x: string; y: number, z: SomeInterface , ... }
@@ -104,7 +102,7 @@ const findInterfacesFromType = (node: ts.Node): Set<string> => {
      */
     node.members.forEach(member => {
       if (ts.isPropertySignature(member) && member.type) {
-        const extraInterfaces = findInterfacesFromType(member.type);
+        const extraInterfaces = findTypeReferencesWithinNode(member.type);
         extraInterfaces.forEach(i => foundInterfaces.add(i));
       }
     });
@@ -127,8 +125,9 @@ const CUSTOM_ELEMENTS_LIFECYCLE_METHODS = new Set([
 const walkNode = (node: ts.Node, startState?: WalkerState): WalkerState => {
   const state: WalkerState = startState || {
     foundInterfaces: new Set(),
+    foundEnums: new Set(),
     publicMethods: new Set(),
-    interfaceNamesToConvert: new Set(),
+    typeReferencesToConvert: new Set(),
     componentClass: undefined,
     customElementsDefineCall: undefined,
     imports: new Set(),
@@ -165,8 +164,8 @@ const walkNode = (node: ts.Node, startState?: WalkerState): WalkerState => {
             if (!param.type) {
               return;
             }
-            const foundInterfaces = findInterfacesFromType(param.type);
-            foundInterfaces.forEach(i => state.interfaceNamesToConvert.add(i));
+            const foundTypeReferences = findTypeReferencesWithinNode(param.type);
+            foundTypeReferences.forEach(i => state.typeReferencesToConvert.add(i));
           });
         } else if (ts.isGetAccessorDeclaration(member)) {
           if (isPrivate(member)) {
@@ -176,8 +175,8 @@ const walkNode = (node: ts.Node, startState?: WalkerState): WalkerState => {
           state.getters.add(member);
 
           if (member.type) {
-            const foundInterfaces = findInterfacesFromType(member.type);
-            foundInterfaces.forEach(i => state.interfaceNamesToConvert.add(i));
+            const foundTypeReferences = findTypeReferencesWithinNode(member.type);
+            foundTypeReferences.forEach(i => state.typeReferencesToConvert.add(i));
           }
         } else if (ts.isSetAccessorDeclaration(member)) {
           if (isPrivate(member)) {
@@ -189,8 +188,8 @@ const walkNode = (node: ts.Node, startState?: WalkerState): WalkerState => {
           if (member.parameters[0]) {
             const setterParamType = member.parameters[0].type;
             if (setterParamType) {
-              const foundInterfaces = findInterfacesFromType(setterParamType);
-              foundInterfaces.forEach(i => state.interfaceNamesToConvert.add(i));
+              const foundTypeReferences = findTypeReferencesWithinNode(setterParamType);
+              foundTypeReferences.forEach(i => state.typeReferencesToConvert.add(i));
             }
           }
         }
@@ -201,6 +200,21 @@ const walkNode = (node: ts.Node, startState?: WalkerState): WalkerState => {
     state.foundInterfaces.add(node);
   } else if (ts.isTypeAliasDeclaration(node)) {
     state.foundInterfaces.add(node);
+  } else if (ts.isEnumDeclaration(node)) {
+    const isConstEnum = node.modifiers && node.modifiers.some(modifier => modifier.kind === ts.SyntaxKind.ConstKeyword);
+    if (!isConstEnum) {
+      throw new Error(`Found enum ${node.name.escapedText.toString()} that is not a const enum.`);
+    }
+
+    const allMembersAreExplictlyInitialized = node.members.every(enumMember => {
+      return enumMember.initializer !== undefined;
+    });
+    if (!allMembersAreExplictlyInitialized) {
+      throw new Error(
+          `Found enum ${node.name.escapedText.toString()} whose members do not have manually defined values.`);
+    }
+
+    state.foundEnums.add(node);
   } else if (ts.isImportDeclaration(node)) {
     const filePath = (node.moduleSpecifier as ts.StringLiteral).text;
 
@@ -250,7 +264,7 @@ const findNestedInterfacesInInterface = (interfaceDec: ts.InterfaceDeclaration|t
       if (!member.type) {
         return;
       }
-      const nestedInterfacesForMember = findInterfacesFromType(member.type);
+      const nestedInterfacesForMember = findTypeReferencesWithinNode(member.type);
       nestedInterfacesForMember.forEach(nested => foundNestedInterfaceNames.add(nested));
     }
   });
@@ -294,16 +308,19 @@ const findNestedReferencesForTypeReference =
               // This means we have a reference to another interface so we have to
               // find the interface and check for any nested interfaces within it.
               const typeReferenceName = nestedType.typeName.escapedText.toString();
-              const nestedTypeReference = Array.from(state.foundInterfaces).find(dec => {
-                return dec.name.escapedText === typeReferenceName;
-              });
+              const nestedTypeReference = findNodeForTypeReferenceName(state, typeReferenceName);
               if (!nestedTypeReference) {
                 throw new Error(`Could not find definition for type reference ${typeReferenceName}.`);
               }
-              // Recurse on the nested interface because if it references any other
-              // interfaces we need to include those in the bridge.
-              findNestedReferencesForTypeReference(state, nestedTypeReference)
-                  .forEach(nested => foundNestedReferences.add(nested));
+
+              if (ts.isEnumDeclaration(nestedTypeReference)) {
+                state.typeReferencesToConvert.add(nestedTypeReference.name.escapedText.toString());
+              } else {
+                // Recurse on the nested interface because if it references any other
+                // interfaces we need to include those in the bridge.
+                findNestedReferencesForTypeReference(state, nestedTypeReference)
+                    .forEach(nested => foundNestedReferences.add(nested));
+              }
             }
           });
         }
@@ -311,23 +328,51 @@ const findNestedReferencesForTypeReference =
         // If it wasn't a type alias, it's an interface, so walk through the interface and add any found nested types.
         const nestedInterfaces = findNestedInterfacesInInterface(interfaceOrTypeAliasDeclaration);
         nestedInterfaces.forEach(nestedInterface => foundNestedReferences.add(nestedInterface));
+
+        // if the interface has any extensions, we need to dive into those too
+        // e.g. interface X extends Y means we have to check Y for any additional type references
+        if (interfaceOrTypeAliasDeclaration.heritageClauses) {
+          interfaceOrTypeAliasDeclaration.heritageClauses.forEach(heritageClause => {
+            const extendNames = heritageClause.types.map(heritageClauseName => {
+              if (ts.isIdentifier(heritageClauseName.expression)) {
+                return heritageClauseName.expression.escapedText.toString();
+              }
+              throw new Error('Unexpected heritageClauseName with no identifier.');
+            });
+
+            extendNames.forEach(interfaceName => {
+              const interfaceDec = findNodeForTypeReferenceName(state, interfaceName);
+              if (!interfaceDec) {
+                throw new Error(`Could not find interface: ${interfaceName}`);
+              }
+              if (!ts.isInterfaceDeclaration(interfaceDec)) {
+                throw new Error('Found invalid TypeScript: an interface cannot extend a type.');
+              }
+              const nestedInterfaces = findNestedInterfacesInInterface(interfaceDec);
+              nestedInterfaces.forEach(nestedInterface => foundNestedReferences.add(nestedInterface));
+            });
+          });
+        }
       }
       return foundNestedReferences;
     };
 
-const populateInterfacesToConvert = (state: WalkerState): WalkerState => {
-  state.interfaceNamesToConvert.forEach(interfaceNameToConvert => {
-    const interfaceOrTypeAliasDeclaration = Array.from(state.foundInterfaces).find(dec => {
-      return dec.name.escapedText === interfaceNameToConvert;
-    });
+const populateTypeReferencesToConvert = (state: WalkerState): WalkerState => {
+  state.typeReferencesToConvert.forEach(typeReferenceName => {
+    const typeDeclaration = findNodeForTypeReferenceName(state, typeReferenceName);
 
     // if the interface isn't found, it might be imported, so just move on.
-    if (!interfaceOrTypeAliasDeclaration) {
+    if (!typeDeclaration) {
       return;
     }
 
-    const foundNestedInterfaces = findNestedReferencesForTypeReference(state, interfaceOrTypeAliasDeclaration);
-    foundNestedInterfaces.forEach(nested => state.interfaceNamesToConvert.add(nested));
+    if (ts.isEnumDeclaration(typeDeclaration)) {
+      // Enums can't have any types nested within them so we can stop at this point.
+      return;
+    }
+
+    const nestedReferences = findNestedReferencesForTypeReference(state, typeDeclaration);
+    nestedReferences.forEach(nested => state.typeReferencesToConvert.add(nested));
   });
 
   return state;
@@ -340,31 +385,39 @@ export const walkTree = (startNode: ts.SourceFile, resolvedFilePath: string): Wa
    * that we didn't find the definition for, that means it's imported
    * so we now need to walk that imported file
    */
-  const foundInterfaceNames = new Set(Array.from(state.foundInterfaces, foundInterface => {
-    return foundInterface.name.escapedText.toString();
-  }));
+  const allFoundTypeReferencesNames = new Set([
+    ...Array.from(
+        state.foundInterfaces,
+        foundInterface => {
+          return foundInterface.name.escapedText.toString();
+        }),
+    ...Array.from(
+        state.foundEnums,
+        foundEnum => {
+          return foundEnum.name.escapedText.toString();
+        }),
+  ]);
 
   // Some components may (rarely) use the TypeScript Object type
   // But that's defined by TypeScript, not us, and maps directly to Closure's Object
   // So we don't need to generate any typedefs for the `Object` type.
-  state.interfaceNamesToConvert.delete('Object');
+  state.typeReferencesToConvert.delete('Object');
 
-  const missingInterfaces = Array.from(state.interfaceNamesToConvert).filter(name => {
-    return foundInterfaceNames.has(name) === false;
+  const missingTypeReferences = Array.from(state.typeReferencesToConvert).filter(name => {
+    return allFoundTypeReferencesNames.has(name) === false;
   });
-
   /* now look at all the imports and see if we have the name of the missing interface
    * and if we do, walk that file to find the interface
    * else, error loudly
    */
   const importsToCheck = new Set<string>();
 
-  missingInterfaces.forEach(missingInterfaceName => {
+  missingTypeReferences.forEach(missingInterfaceName => {
     const importForMissingInterface = Array.from(state.imports).find(imp => imp.namedImports.has(missingInterfaceName));
 
     if (!importForMissingInterface) {
-      throw new Error(
-          `Could not find definition for interface ${missingInterfaceName} in the source file or any of its imports.`);
+      throw new Error(`Could not find definition for type reference ${
+          missingInterfaceName} in the source file or any of its imports.`);
     }
 
     importsToCheck.add(path.join(path.dirname(resolvedFilePath), importForMissingInterface.filePath));
@@ -379,8 +432,12 @@ export const walkTree = (startNode: ts.SourceFile, resolvedFilePath: string): Wa
       state.foundInterfaces.add(foundInterface);
     });
 
-    stateFromSubFile.interfaceNamesToConvert.forEach(interfaceToConvert => {
-      state.interfaceNamesToConvert.add(interfaceToConvert);
+    stateFromSubFile.foundEnums.forEach(foundEnum => {
+      state.foundEnums.add(foundEnum);
+    });
+
+    stateFromSubFile.typeReferencesToConvert.forEach(interfaceToConvert => {
+      state.typeReferencesToConvert.add(interfaceToConvert);
     });
   });
 
@@ -403,7 +460,7 @@ export const walkTree = (startNode: ts.SourceFile, resolvedFilePath: string): Wa
    * to also convert Baz because Foo references it.
    */
 
-  state = populateInterfacesToConvert(state);
+  state = populateTypeReferencesToConvert(state);
 
   return state;
 };

@@ -2,10 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import * as Host from '../host/host.js';
 import * as SDK from '../sdk/sdk.js';  // eslint-disable-line no-unused-vars
 import * as UI from '../ui/ui.js';
 
 import {AccessibilitySubPane} from './AccessibilitySubPane.js';
+
+const MAX_CHILD_ELEMENTS_THRESHOLD = 300;
 
 export class SourceOrderPane extends AccessibilitySubPane {
   constructor() {
@@ -29,11 +32,13 @@ export class SourceOrderPane extends AccessibilitySubPane {
   }
 
   /**
-   * @override
    * @param {?SDK.DOMModel.DOMNode} node
+   * @returns {!Promise.<?>}
    */
-  setNode(node) {
-    const persistCheckbox = this._checkboxElement.checked;
+  async setNodeAsync(node) {
+    if (!this._checkboxLabel.classList.contains('hidden')) {
+      this._checked = this._checkboxElement.checked;
+    }
     this._checkboxElement.checked = false;
     this._checkboxClicked();
     super.setNode(node);
@@ -46,18 +51,18 @@ export class SourceOrderPane extends AccessibilitySubPane {
     const childCount = this._node.childNodeCount();
     if (childCount > 0) {
       if (!this._node.children()) {
-        this._node.getSubtree(1, false);
+        await this._node.getSubtree(1, false);
       }
       const children = /** @type {!Array<!SDK.DOMModel.DOMNode>} */ (this._node.children());
       foundSourceOrder = children.some(child => child.nodeType() === Node.ELEMENT_NODE);
     }
 
     this._noNodeInfo.classList.toggle('hidden', foundSourceOrder);
-    this._warning.classList.toggle('hidden', childCount < 1000);
+    this._warning.classList.toggle('hidden', childCount < MAX_CHILD_ELEMENTS_THRESHOLD);
     this._checkboxLabel.classList.toggle('hidden', !foundSourceOrder);
     if (foundSourceOrder) {
       this._overlayModel = this._node.domModel().overlayModel();
-      this._checkboxElement.checked = persistCheckbox;
+      this._checkboxElement.checked = this._checked;
       this._checkboxClicked();
     } else {
       this._overlayModel = null;
@@ -70,6 +75,7 @@ export class SourceOrderPane extends AccessibilitySubPane {
     }
 
     if (this._checkboxElement.checked) {
+      Host.userMetrics.actionTaken(Host.UserMetrics.Action.SourceOrderViewActivated);
       this._overlayModel.highlightSourceOrderInOverlay(this._node);
     } else {
       this._overlayModel.hideSourceOrderInOverlay();

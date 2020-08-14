@@ -216,14 +216,14 @@ export class ServiceWorkersView extends UI.Widget.VBox {
 
   /**
    * @param {string} origin
-   * @return {!UI.ReportView.ReportView}
+   * @return {?UI.ReportView.ReportView}
    */
   _getReportViewForOrigin(origin) {
     if (this._securityOriginManager.securityOrigins().includes(origin) ||
         this._securityOriginManager.unreachableMainSecurityOrigin() === origin) {
       return this._currentWorkersView;
     }
-    return new UI.ReportView.ReportView();
+    return null;
   }
 
   /**
@@ -234,7 +234,11 @@ export class ServiceWorkersView extends UI.Widget.VBox {
     let section = this._sections.get(registration);
     if (!section) {
       const title = registration.scopeURL;
-      const uiSection = this._getReportViewForOrigin(registration.securityOrigin).appendSection(title);
+      const reportView = this._getReportViewForOrigin(registration.securityOrigin);
+      if (!reportView) {
+        return;
+      }
+      const uiSection = reportView.appendSection(title);
       uiSection.setUiGroupTitle(ls`Service worker for ${title}`);
       uiSection[this._registrationSymbol] = registration;
       section = new Section(

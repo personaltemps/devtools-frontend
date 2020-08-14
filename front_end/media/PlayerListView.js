@@ -47,6 +47,7 @@ export class PlayerEntryTreeElement extends UI.TreeOutline.TreeElement {
   _rightClickContextMenu(playerID, event) {
     const contextMenu = new UI.ContextMenu.ContextMenu(event);
     contextMenu.headerSection().appendItem(ls`Hide player`, this._hidePlayer.bind(this, playerID));
+    contextMenu.headerSection().appendItem(ls`Hide all others`, this._hideOthers.bind(this, playerID));
     contextMenu.headerSection().appendItem(ls`Save player info`, this._savePlayer.bind(this, playerID));
     contextMenu.show();
     return true;
@@ -58,6 +59,10 @@ export class PlayerEntryTreeElement extends UI.TreeOutline.TreeElement {
 
   _savePlayer(playerID) {
     this._displayContainer.exportPlayerData(playerID);
+  }
+
+  _hideOthers(playerID) {
+    this._displayContainer.markOtherPlayersForDeletion(playerID);
   }
 }
 
@@ -81,12 +86,6 @@ export class PlayerListView extends UI.Widget.VBox {
     this._sidebarTree = new UI.TreeOutline.TreeOutlineInShadow();
     this.contentElement.appendChild(this._sidebarTree.element);
     this._sidebarTree.registerRequiredCSS('media/playerListView.css');
-
-    // Audio capture / output devices.
-    this._audioDevices = this._addListSection(Common.UIString('Audio I/O'));
-
-    // Video capture devices.
-    this._videoDevices = this._addListSection(Common.UIString('Video Capture Devices'));
 
     // Players active in this tab.
     this._playerList = this._addListSection(Common.UIString('Players'));

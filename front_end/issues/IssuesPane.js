@@ -104,6 +104,11 @@ class AffectedResourcesView extends UI.TreeOutline.TreeElement {
     this._affectedResources.textContent = '';
   }
 
+  expandIfOneResource() {
+    if (this._affectedResourcesCount === 1) {
+      this.expand();
+    }
+  }
 
   /**
    * This function resolves a requestId to network requests. If the requestId does not resolve, a listener is installed
@@ -321,30 +326,164 @@ class AffectedDirectivesView extends AffectedResourcesView {
   }
 
   /**
-   * @param {!Set<!Protocol.Audits.ContentSecurityPolicyIssueDetails>} cspViolations
+   * @param {!Element} header
    */
-  _appendAffectedDirectives(cspViolations) {
-    const header = document.createElement('tr');
-    if (this._issue.code() === SDK.ContentSecurityPolicyIssue.urlViolationCode) {
-      const info = document.createElement('td');
-      info.classList.add('affected-resource-header');
-      info.classList.add('affected-resource-directive-info-header');
-      info.textContent = ls`Resource`;
-      header.appendChild(info);
-    }
+  _appendDirectiveColumnTitle(header) {
     const name = document.createElement('td');
     name.classList.add('affected-resource-header');
     name.textContent = ls`Directive`;
     header.appendChild(name);
+  }
+
+  /**
+   * @param {!Element} header
+   */
+  _appendURLColumnTitle(header) {
+    const info = document.createElement('td');
+    info.classList.add('affected-resource-header');
+    info.classList.add('affected-resource-directive-info-header');
+    info.textContent = ls`Resource`;
+    header.appendChild(info);
+  }
+
+  /**
+   * @param {!Element} header
+   */
+  _appendElementColumnTitle(header) {
+    const affectedNode = document.createElement('td');
+    affectedNode.classList.add('affected-resource-header');
+    affectedNode.textContent = ls`Element`;
+    header.appendChild(affectedNode);
+  }
+
+  /**
+   * @param {!Element} header
+   */
+  _appendSourceCodeColumnTitle(header) {
     const sourceCodeLink = document.createElement('td');
     sourceCodeLink.classList.add('affected-resource-header');
     sourceCodeLink.textContent = ls`Source code`;
     header.appendChild(sourceCodeLink);
+  }
+
+  /**
+   * @param {!Element} header
+   */
+  _appendStatusColumnTitle(header) {
+    const status = document.createElement('td');
+    status.classList.add('affected-resource-header');
+    status.textContent = ls`Status`;
+    header.appendChild(status);
+  }
+
+  /**
+   * @param {!Element} element
+   */
+  _appendBlockedStatus(element) {
+    const status = document.createElement('td');
+    status.classList.add('affected-resource-blocked-status');
+    status.textContent = ls`blocked`;
+    element.appendChild(status);
+  }
+
+  /**
+   * @param {!Element} element
+   * @param {string} directive
+   */
+  _appendViolatedDirective(element, directive) {
+    const violatedDirective = document.createElement('td');
+    violatedDirective.textContent = directive;
+    element.appendChild(violatedDirective);
+  }
+
+  /**
+   * @param {!Element} element
+   * @param {string} url
+   */
+  _appendBlockedURL(element, url) {
+    const info = document.createElement('td');
+    info.classList.add('affected-resource-directive-info');
+    info.textContent = url;
+    element.appendChild(info);
+  }
+
+  /**
+   * @param {!Element} element
+   * @param {number | undefined} nodeId
+   */
+  _appendBlockedElement(element, nodeId) {
+    const violatingNode = document.createElement('td');
+    violatingNode.classList.add('affected-resource-csp-info-node');
+
+    if (nodeId) {
+      const violatingNodeId = nodeId;
+      const icon = UI.Icon.Icon.create('largeicon-node-search', 'icon');
+
+      const target = /** @type {!SDK.SDKModel.Target} */ (SDK.SDKModel.TargetManager.instance().mainTarget());
+      icon.onclick = () => {
+        const deferredDOMNode = new SDK.DOMModel.DeferredDOMNode(target, violatingNodeId);
+        Common.Revealer.reveal(deferredDOMNode);
+      };
+
+      UI.Tooltip.Tooltip.install(icon, ls`Click to reveal the violating DOM node in the Elements panel`);
+      violatingNode.appendChild(icon);
+
+      violatingNode.onmouseenter = () => {
+        const deferredDOMNode = new SDK.DOMModel.DeferredDOMNode(target, violatingNodeId);
+        if (deferredDOMNode) {
+          deferredDOMNode.highlight();
+        }
+      };
+      violatingNode.onmouseleave = () => SDK.OverlayModel.OverlayModel.hideDOMNodeHighlight();
+    }
+    element.appendChild(violatingNode);
+  }
+
+  /**
+   * @param {!Element} element
+   * @param {?Protocol.Audits.SourceCodeLocation | undefined} sourceLocation
+   */
+  _appendSourceLocation(element, sourceLocation) {
+    const sourceCodeLocation = document.createElement('td');
+    if (sourceLocation) {
+      const maxLengthForDisplayedURLs = 40;  // Same as console messages.
+      const linkifier = new Components.Linkifier.Linkifier(maxLengthForDisplayedURLs);
+      const sourceAnchor = linkifier.linkifyScriptLocation(
+          /* target */ null,
+          /* scriptId */ null, sourceLocation.url, sourceLocation.lineNumber);
+      sourceCodeLocation.appendChild(sourceAnchor);
+    }
+    element.appendChild(sourceCodeLocation);
+  }
+
+  /**
+   * @param {!Set<!Protocol.Audits.ContentSecurityPolicyIssueDetails>} cspViolations
+   */
+  _appendAffectedContentSecurityPolicyDetails(cspViolations) {
+    const header = document.createElement('tr');
+    if (this._issue.code() === SDK.ContentSecurityPolicyIssue.inlineViolationCode) {
+      this._appendDirectiveColumnTitle(header);
+      this._appendElementColumnTitle(header);
+      this._appendSourceCodeColumnTitle(header);
+      this._appendStatusColumnTitle(header);
+    } else if (this._issue.code() === SDK.ContentSecurityPolicyIssue.urlViolationCode) {
+      this._appendURLColumnTitle(header);
+      this._appendStatusColumnTitle(header);
+      this._appendDirectiveColumnTitle(header);
+      this._appendSourceCodeColumnTitle(header);
+    } else if (this._issue.code() === SDK.ContentSecurityPolicyIssue.evalViolationCode) {
+      this._appendSourceCodeColumnTitle(header);
+      this._appendDirectiveColumnTitle(header);
+      this._appendStatusColumnTitle(header);
+    } else {
+      this.updateAffectedResourceCount(0);
+      return;
+    }
     this._affectedResources.appendChild(header);
     let count = 0;
     for (const cspViolation of cspViolations) {
       count++;
-      this.appendAffectedDirective(cspViolation);
+      this._appendAffectedContentSecurityPolicyDetail(cspViolation);
     }
     this.updateAffectedResourceCount(count);
   }
@@ -352,30 +491,29 @@ class AffectedDirectivesView extends AffectedResourcesView {
   /**
    * @param {!Protocol.Audits.ContentSecurityPolicyIssueDetails} cspViolation
    */
-  appendAffectedDirective(cspViolation) {
+  _appendAffectedContentSecurityPolicyDetail(cspViolation) {
     const element = document.createElement('tr');
     element.classList.add('affected-resource-directive');
-    if (this._issue.code() === SDK.ContentSecurityPolicyIssue.urlViolationCode) {
-      const info = document.createElement('td');
-      info.classList.add('affected-resource-directive-info');
+
+    if (this._issue.code() === SDK.ContentSecurityPolicyIssue.inlineViolationCode) {
+      this._appendViolatedDirective(element, cspViolation.violatedDirective);
+      this._appendBlockedElement(element, cspViolation.violatingNodeId);
+      this._appendSourceLocation(element, cspViolation.sourceCodeLocation);
+      this._appendBlockedStatus(element);
+    } else if (this._issue.code() === SDK.ContentSecurityPolicyIssue.urlViolationCode) {
       const url = cspViolation.blockedURL ? cspViolation.blockedURL : '';
-      info.textContent = url;
-      element.appendChild(info);
+      this._appendBlockedURL(element, url);
+      this._appendBlockedStatus(element);
+      this._appendViolatedDirective(element, cspViolation.violatedDirective);
+      this._appendSourceLocation(element, cspViolation.sourceCodeLocation);
+    } else if (this._issue.code() === SDK.ContentSecurityPolicyIssue.evalViolationCode) {
+      this._appendSourceLocation(element, cspViolation.sourceCodeLocation);
+      this._appendViolatedDirective(element, cspViolation.violatedDirective);
+      this._appendBlockedStatus(element);
+    } else {
+      return;
     }
-    const name = document.createElement('td');
-    name.textContent = cspViolation.violatedDirective;
-    element.appendChild(name);
-    const sourceCodeLocation = cspViolation.sourceCodeLocation;
-    if (sourceCodeLocation) {
-      const maxLengthForDisplayedURLs = 40;  // Same as console messages.
-      const linkifier = new Components.Linkifier.Linkifier(maxLengthForDisplayedURLs);
-      const sourceAnchor = linkifier.linkifyScriptLocation(
-          /* target */ null,
-          /* scriptId */ null, sourceCodeLocation.url, sourceCodeLocation.lineNumber);
-      const sourceLocation = document.createElement('td');
-      sourceLocation.appendChild(sourceAnchor);
-      element.appendChild(sourceLocation);
-    }
+
     this._affectedResources.appendChild(element);
   }
 
@@ -384,7 +522,7 @@ class AffectedDirectivesView extends AffectedResourcesView {
    */
   update() {
     this.clear();
-    this._appendAffectedDirectives(this._issue.cspViolations());
+    this._appendAffectedContentSecurityPolicyDetails(this._issue.cspViolations());
   }
 }
 
@@ -876,6 +1014,7 @@ class IssueView extends UI.TreeOutline.TreeElement {
     ];
 
     this._aggregatedIssuesCount = null;
+    this._hasBeenExpandedBefore = false;
   }
 
   /**
@@ -925,6 +1064,18 @@ class IssueView extends UI.TreeOutline.TreeElement {
     header.appendChild(title);
 
     this.listItemElement.appendChild(header);
+  }
+
+  /**
+   * @override
+   */
+  onexpand() {
+    if (!this._hasBeenExpandedBefore) {
+      this._hasBeenExpandedBefore = true;
+      for (const view of this._affectedResourceViews) {
+        view.expandIfOneResource();
+      }
+    }
   }
 
   _updateAggregatedIssuesCount() {
@@ -1021,7 +1172,6 @@ export class IssuesPaneImpl extends UI.Widget.VBox {
 
     this._noIssuesMessageDiv = document.createElement('div');
     this._noIssuesMessageDiv.classList.add('issues-pane-no-issues');
-    this._noIssuesMessageDiv.textContent = ls`No issues detected so far`;
     this.contentElement.appendChild(this._noIssuesMessageDiv);
 
     /** @type {!BrowserSDK.IssuesManager.IssuesManager} */
@@ -1033,13 +1183,8 @@ export class IssuesPaneImpl extends UI.Widget.VBox {
     for (const issue of this._aggregator.aggregatedIssues()) {
       this._updateIssueView(issue);
     }
+    this._issuesManager.addEventListener(BrowserSDK.IssuesManager.Events.IssuesCountUpdated, this._updateCounts, this);
     this._updateCounts();
-
-    /** @type {?UI.Infobar.Infobar} */
-    this._reloadInfobar = null;
-    /** @type {?Element} */
-    this._infoBarDiv = null;
-    this._showReloadInfobarIfNeeded();
   }
 
   /**
@@ -1057,6 +1202,13 @@ export class IssuesPaneImpl extends UI.Widget.VBox {
     const toolbarContainer = this.contentElement.createChild('div', 'issues-toolbar-container');
     new UI.Toolbar.Toolbar('issues-toolbar-left', toolbarContainer);
     const rightToolbar = new UI.Toolbar.Toolbar('issues-toolbar-right', toolbarContainer);
+
+    // TODO(crbug.com/1011811): Remove cast once closure is gone. Closure requires an upcast to 'any' from 'boolean'.
+    const thirdPartySetting = /** @type {!Common.Settings.Setting<*>} */ (SDK.Issue.getShowThirdPartyIssuesSetting());
+    const showThirdPartyCheckbox = new UI.Toolbar.ToolbarSettingCheckbox(
+        thirdPartySetting, ls`Include Issues caused by third-party sites`, ls`Include third-party issues`);
+    rightToolbar.appendToolbarItem(showThirdPartyCheckbox);
+
     rightToolbar.appendSeparator();
     const toolbarWarnings = document.createElement('div');
     toolbarWarnings.classList.add('toolbar-warnings');
@@ -1115,7 +1267,6 @@ export class IssuesPaneImpl extends UI.Widget.VBox {
   }
 
   _fullUpdate() {
-    this._hideReloadInfoBar();
     for (const view of this._issueViews.values()) {
       this._issuesTree.removeChild(view);
     }
@@ -1138,11 +1289,15 @@ export class IssuesPaneImpl extends UI.Widget.VBox {
    * @param {number} issuesCount
    */
   _showIssuesTreeOrNoIssuesDetectedMessage(issuesCount) {
-    if (issuesCount > 0 || this._issuesManager.reloadForAccurateInformationRequired()) {
+    if (issuesCount > 0) {
       this._issuesTree.element.hidden = false;
       this._noIssuesMessageDiv.style.display = 'none';
     } else {
       this._issuesTree.element.hidden = true;
+      // We alreay know that issesCount is zero here.
+      const hasOnlyThirdPartyIssues = this._issuesManager.numberOfAllStoredIssues() > 0;
+      this._noIssuesMessageDiv.textContent =
+          hasOnlyThirdPartyIssues ? ls`Only third-party issues detected so far` : ls`No issues detected so far`;
       this._noIssuesMessageDiv.style.display = 'flex';
     }
   }
@@ -1155,49 +1310,6 @@ export class IssuesPaneImpl extends UI.Widget.VBox {
     if (issueView) {
       issueView.expand();
       issueView.reveal();
-    }
-  }
-
-  _showReloadInfobarIfNeeded() {
-    if (!this._issuesManager.reloadForAccurateInformationRequired()) {
-      return;
-    }
-
-    function reload() {
-      const mainTarget = SDK.SDKModel.TargetManager.instance().mainTarget();
-      if (mainTarget) {
-        const resourceModel = mainTarget.model(SDK.ResourceTreeModel.ResourceTreeModel);
-        if (resourceModel) {
-          resourceModel.reloadPage();
-        }
-      }
-    }
-
-    const infobar = new UI.Infobar.Infobar(
-        UI.Infobar.Type.Warning,
-        ls`Some issues might be missing or incomplete, reload the inspected page to get the full information.`,
-        [{text: ls`Reload page`, highlight: false, delegate: reload, dismiss: true}]);
-
-    this._reloadInfobar = infobar;
-    this._attachReloadInfoBar(infobar);
-  }
-
-  /** @param {!UI.Infobar.Infobar} infobar */
-  _attachReloadInfoBar(infobar) {
-    if (!this._infoBarDiv) {
-      this._infoBarDiv = document.createElement('div');
-      this._infoBarDiv.classList.add('flex-none');
-      this.contentElement.insertBefore(this._infoBarDiv, this._issuesToolbarContainer.nextSibling);
-    }
-    this._infoBarDiv.appendChild(infobar.element);
-    infobar.setParentView(this);
-    this.doResize();
-  }
-
-  _hideReloadInfoBar() {
-    if (this._reloadInfobar) {
-      this._reloadInfobar.dispose();
-      this._reloadInfobar = null;
     }
   }
 }

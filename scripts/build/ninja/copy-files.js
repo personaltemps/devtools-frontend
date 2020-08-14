@@ -6,18 +6,23 @@ const path = require('path');
 const [, , src, dest, files] = process.argv;
 
 for (const file of files.split(',')) {
-  const srcPath = path.join(process.cwd(), src, file);
-  const destPath = path.join(process.cwd(), dest, file);
+  const srcPath = path.join(src, file);
+  const destPath = path.join(dest, file);
 
   // If there's a file there from a previous build, unlink it first. This
   // is because the file in that location might be a hardlinked file, and
   // overwriting it doesn't change the fact that it's hardlinked.
+  const srcContents = fs.readFileSync(srcPath);
   if (fs.existsSync(destPath)) {
-    fs.unlinkSync(destPath);
+    // Check contents, return early if match
+    const destContents = fs.readFileSync(destPath);
+    if (srcContents.equals(destContents)) {
+      continue;
+    }
   }
 
   // Force a write to the target filesystem, since by default the ninja
   // toolchain will create a hardlink, which in turn reflects changes in
   // gen and resources/inspector back to //front_end.
-  fs.writeFileSync(destPath, fs.readFileSync(srcPath));
+  fs.writeFileSync(destPath, srcContents);
 }

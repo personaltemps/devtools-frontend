@@ -45,6 +45,11 @@ describe('valueForTypeNode', () => {
     assert.strictEqual(valueForTypeNode(undefinedNode), 'undefined');
   });
 
+  it('supports qualified types by taking the left type', () => {
+    const node = ts.createTypeReferenceNode(ts.createQualifiedName(ts.createIdentifier('MyEnum'), 'myMember'), []);
+    assert.strictEqual(valueForTypeNode(node), 'MyEnum');
+  });
+
   it('converts union types', () => {
     const stringNode = createNode(ts.SyntaxKind.StringKeyword);
     const numberNode = createNode(ts.SyntaxKind.NumberKeyword);
@@ -146,7 +151,7 @@ describe('valueForTypeNode', () => {
     it('converts functions with no parameters', () => {
       const returnTypeNode = createNode(ts.SyntaxKind.StringKeyword);
       const node = ts.createFunctionTypeNode([], [], returnTypeNode);
-      assert.strictEqual(valueForTypeNode(node), 'function(): string');
+      assert.strictEqual(valueForTypeNode(node), 'function():string');
     });
 
     it('converts a function with parameters', () => {
@@ -155,7 +160,7 @@ describe('valueForTypeNode', () => {
           [], [], undefined, ts.createIdentifier('foo'), undefined, createNode(ts.SyntaxKind.StringKeyword));
       const node = ts.createFunctionTypeNode([], [stringParam], returnTypeNode);
 
-      assert.strictEqual(valueForTypeNode(node), 'function(string): string');
+      assert.strictEqual(valueForTypeNode(node), 'function(string):string');
     });
 
     it('can convert functions that return primitives or undefined', () => {
@@ -166,7 +171,7 @@ describe('valueForTypeNode', () => {
       const stringParam = ts.createParameter(
           [], [], undefined, ts.createIdentifier('foo'), undefined, createNode(ts.SyntaxKind.StringKeyword));
       const node = ts.createFunctionTypeNode([], [stringParam], returnUnionNode);
-      assert.strictEqual(valueForTypeNode(node), 'function(string): (string|undefined)');
+      assert.strictEqual(valueForTypeNode(node), 'function(string):(string|undefined)');
     });
   });
 });

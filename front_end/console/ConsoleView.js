@@ -288,7 +288,6 @@ export class ConsoleView extends UI.Widget.VBox {
         this._onIssuesCountChanged();
       }
     }
-    this._hasInteractedWithInfoBar = false;
   }
 
   _onIssuesCountChanged() {
@@ -298,41 +297,33 @@ export class ConsoleView extends UI.Widget.VBox {
         this._issueBarDiv = null;
         this._scheduleViewportRefresh();
       }
-    } else if (!this._issueBarDiv && !this._hasInteractedWithInfoBar) {
-      const elem = document.createElement('div');
-      elem.classList.add('flex-none');
-      // This is a fake a {ConsoleViewportElement} so the issue banner can be inserted into the {ConsoleViewport}.
+    } else if (!this._issueBarDiv) {
+      const issueBarAction = /** @type {!UI.Infobar.InfobarAction} */ ({
+        text: ls`View issues`,
+        highlight: false,
+        delegate: () => {
+          Host.userMetrics.issuesPanelOpenedFrom(Host.UserMetrics.IssueOpener.ConsoleInfoBar);
+          UI.ViewManager.ViewManager.instance().showView('issues-pane');
+        },
+        dismiss: false,
+      });
+      const issueBar = new UI.Infobar.Infobar(
+          UI.Infobar.Type.Issue, ls`Some messages have been moved to the Issues panel.`, [issueBarAction]);
+      issueBar.element.tabIndex = -1;
+      issueBar.element.classList.add('console-message-wrapper');
+      // This is a fake {ConsoleViewportElement} so the issue banner can be inserted into the {ConsoleViewport}.
       this._issueBarDiv = {
         willHide() {
-          this._cachedIssueBarHeight = elem.offsetHeight;
+          this._cachedIssueBarHeight = issueBar.element.offsetHeight;
         },
         wasShown() {},
-        element: () => elem,
-        focusLastChildOrSelf: () => elem.focus(),
+        element: () => issueBar.element,
+        focusLastChildOrSelf: () => issueBar.element.focus(),
         fastHeight() {
           return this._cachedIssueBarHeight || 37;
         },
         _cachedIssueBarHeight: 0
       };
-      const issueBarAction = /** @type {!UI.Infobar.InfobarAction} */ ({
-        text: ls`Go to Issues`,
-        highlight: false,
-        delegate: () => {
-          this._hasInteractedWithInfoBar = true;
-          Host.userMetrics.issuesPanelOpenedFrom(Host.UserMetrics.IssueOpener.ConsoleInfoBar);
-          UI.ViewManager.ViewManager.instance().showView('issues-pane');
-        },
-        dismiss: true,
-      });
-      const issueBar = new UI.Infobar.Infobar(
-          UI.Infobar.Type.Issue,
-          ls`Issues detected. The new Issues tab displays information about deprecations, breaking changes and other potential problems.`,
-          [issueBarAction]);
-      issueBar.setCloseCallback(() => {
-        this._hasInteractedWithInfoBar = true;
-      });
-      elem.appendChild(issueBar.element);
-      issueBar.setParentView(this);
       this._scheduleViewportRefresh();
     }
   }
@@ -348,6 +339,12 @@ export class ConsoleView extends UI.Widget.VBox {
   }
 
   static clearConsole() {
+    const consoleView = ConsoleView.instance();
+    if (consoleView._issueBarDiv) {
+      consoleView._issueBarDiv.element().remove();
+      consoleView._issueBarDiv = null;
+      consoleView._scheduleViewportRefresh();
+    }
     SDK.ConsoleModel.ConsoleModel.instance().requestClearMessages();
   }
 

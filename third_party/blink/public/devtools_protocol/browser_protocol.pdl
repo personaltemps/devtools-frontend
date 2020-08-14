@@ -623,6 +623,7 @@ experimental domain Audits
       ContentSecurityPolicyViolationType contentSecurityPolicyViolationType
       optional AffectedFrame frameAncestor
       optional SourceCodeLocation sourceCodeLocation
+      optional DOM.BackendNodeId violatingNodeId
 
   # A unique identifier for the type of issue. Each type may use one of the
   # optional fields in InspectorIssueDetails to convey more specific
@@ -1887,6 +1888,13 @@ domain DOM
       # Rectangle height
       number height
 
+  type CSSComputedStyleProperty extends object
+    properties
+      # Computed style property name.
+      string name
+      # Computed style property value.
+      string value
+
   # Collects class names for the node with given id and all of it's child nodes.
   experimental command collectClassNamesFromSubtree
     parameters
@@ -2019,7 +2027,9 @@ domain DOM
       Node root
 
   # Returns the root DOM node (and optionally the subtree) to the caller.
-  command getFlattenedDocument
+  # Deprecated, as it is not designed to work well with the rest of the DOM agent.
+  # Use DOMSnapshot.captureSnapshot instead.
+  deprecated command getFlattenedDocument
     parameters
       # The maximum depth at which children should be retrieved, defaults to 1. Use -1 for the
       # entire subtree or provide an integer larger than 0.
@@ -2030,6 +2040,20 @@ domain DOM
     returns
       # Resulting node.
       array of Node nodes
+
+  # Finds nodes with a given computed style in a subtree.
+  experimental command getNodesForSubtreeByStyle
+    parameters
+      # Node ID pointing to the root of a subtree.
+      NodeId nodeId
+      # The style to filter nodes by (includes nodes if any of properties matches).
+      array of CSSComputedStyleProperty computedStyles
+      # Whether or not iframes and shadow roots in the same target should be traversed when returning the
+      # results (default is false).
+      optional boolean pierce
+    returns
+      # Resulting nodes.
+      array of NodeId nodeIds
 
   # Returns node id at given location. Depending on whether DOM domain is enabled, nodeId is
   # either returned or not.
@@ -7246,6 +7270,8 @@ domain Target
       boolean attached
       # Opener target Id
       optional TargetID openerId
+      # Whether the opened window has access to the originating window.
+      experimental boolean canAccessOpener
       experimental optional Browser.BrowserContextID browserContextId
 
   experimental type RemoteLocation extends object

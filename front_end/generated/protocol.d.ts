@@ -879,6 +879,7 @@ declare namespace Protocol {
       contentSecurityPolicyViolationType: ContentSecurityPolicyViolationType;
       frameAncestor?: AffectedFrame;
       sourceCodeLocation?: SourceCodeLocation;
+      violatingNodeId?: DOM.BackendNodeId;
     }
 
     /**
@@ -2760,6 +2761,17 @@ declare namespace Protocol {
       height: number;
     }
 
+    export interface CSSComputedStyleProperty {
+      /**
+       * Computed style property name.
+       */
+      name: string;
+      /**
+       * Computed style property value.
+       */
+      value: string;
+    }
+
     export interface CollectClassNamesFromSubtreeRequest {
       /**
        * Id of the node to collect class names.
@@ -2967,6 +2979,29 @@ declare namespace Protocol {
        * Resulting node.
        */
       nodes: Node[];
+    }
+
+    export interface GetNodesForSubtreeByStyleRequest {
+      /**
+       * Node ID pointing to the root of a subtree.
+       */
+      nodeId: NodeId;
+      /**
+       * The style to filter nodes by (includes nodes if any of properties matches).
+       */
+      computedStyles: CSSComputedStyleProperty[];
+      /**
+       * Whether or not iframes and shadow roots in the same target should be traversed when returning the
+       * results (default is false).
+       */
+      pierce?: boolean;
+    }
+
+    export interface GetNodesForSubtreeByStyleResponse extends ProtocolResponseWithError {
+      /**
+       * Resulting nodes.
+       */
+      nodeIds: NodeId[];
     }
 
     export interface GetNodeForLocationRequest {
@@ -10753,6 +10788,10 @@ declare namespace Protocol {
        * Opener target Id
        */
       openerId?: TargetID;
+      /**
+       * Whether the opened window has access to the originating window.
+       */
+      canAccessOpener: boolean;
       browserContextId?: Browser.BrowserContextID;
     }
 
@@ -12154,6 +12193,15 @@ declare namespace Protocol {
     }
 
     /**
+     * Location range within one script.
+     */
+    export interface LocationRange {
+      scriptId: Runtime.ScriptId;
+      start: ScriptPosition;
+      end: ScriptPosition;
+    }
+
+    /**
      * JavaScript call frame. Array of call frames form the call stack.
      */
     export interface CallFrame {
@@ -12757,6 +12805,17 @@ declare namespace Protocol {
        * before next pause.
        */
       breakOnAsyncCall?: boolean;
+      /**
+       * The skipList specifies location ranges that should be skipped on step into.
+       */
+      skipList?: LocationRange[];
+    }
+
+    export interface StepOverRequest {
+      /**
+       * The skipList specifies location ranges that should be skipped on step over.
+       */
+      skipList?: LocationRange[];
     }
 
     /**

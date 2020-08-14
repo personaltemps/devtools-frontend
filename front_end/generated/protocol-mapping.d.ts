@@ -1047,9 +1047,18 @@ export namespace ProtocolMapping {
     'DOM.getDocument': {paramsType: [Protocol.DOM.GetDocumentRequest?]; returnType: Protocol.DOM.GetDocumentResponse;};
     /**
      * Returns the root DOM node (and optionally the subtree) to the caller.
+     * Deprecated, as it is not designed to work well with the rest of the DOM agent.
+     * Use DOMSnapshot.captureSnapshot instead.
      */
     'DOM.getFlattenedDocument': {
       paramsType: [Protocol.DOM.GetFlattenedDocumentRequest?]; returnType: Protocol.DOM.GetFlattenedDocumentResponse;
+    };
+    /**
+     * Finds nodes with a given computed style in a subtree.
+     */
+    'DOM.getNodesForSubtreeByStyle': {
+      paramsType: [Protocol.DOM.GetNodesForSubtreeByStyleRequest];
+      returnType: Protocol.DOM.GetNodesForSubtreeByStyleResponse;
     };
     /**
      * Returns node id at given location. Depending on whether DOM domain is enabled, nodeId is
@@ -2666,7 +2675,7 @@ export namespace ProtocolMapping {
     /**
      * Steps over the statement.
      */
-    'Debugger.stepOver': {paramsType: []; returnType: void;};
+    'Debugger.stepOver': {paramsType: [Protocol.Debugger.StepOverRequest?]; returnType: void;};
     /**
      * Enables console to refer to the node with given id via $x (see Command Line API for more details
      * $x functions).

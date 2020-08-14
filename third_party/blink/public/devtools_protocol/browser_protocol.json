@@ -1253,6 +1253,11 @@
                             "name": "sourceCodeLocation",
                             "optional": true,
                             "$ref": "SourceCodeLocation"
+                        },
+                        {
+                            "name": "violatingNodeId",
+                            "optional": true,
+                            "$ref": "DOM.BackendNodeId"
                         }
                     ]
                 },
@@ -4034,6 +4039,22 @@
                             "type": "number"
                         }
                     ]
+                },
+                {
+                    "id": "CSSComputedStyleProperty",
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "name",
+                            "description": "Computed style property name.",
+                            "type": "string"
+                        },
+                        {
+                            "name": "value",
+                            "description": "Computed style property value.",
+                            "type": "string"
+                        }
+                    ]
                 }
             ],
             "commands": [
@@ -4321,7 +4342,8 @@
                 },
                 {
                     "name": "getFlattenedDocument",
-                    "description": "Returns the root DOM node (and optionally the subtree) to the caller.",
+                    "description": "Returns the root DOM node (and optionally the subtree) to the caller.\nDeprecated, as it is not designed to work well with the rest of the DOM agent.\nUse DOMSnapshot.captureSnapshot instead.",
+                    "deprecated": true,
                     "parameters": [
                         {
                             "name": "depth",
@@ -4343,6 +4365,42 @@
                             "type": "array",
                             "items": {
                                 "$ref": "Node"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "getNodesForSubtreeByStyle",
+                    "description": "Finds nodes with a given computed style in a subtree.",
+                    "experimental": true,
+                    "parameters": [
+                        {
+                            "name": "nodeId",
+                            "description": "Node ID pointing to the root of a subtree.",
+                            "$ref": "NodeId"
+                        },
+                        {
+                            "name": "computedStyles",
+                            "description": "The style to filter nodes by (includes nodes if any of properties matches).",
+                            "type": "array",
+                            "items": {
+                                "$ref": "CSSComputedStyleProperty"
+                            }
+                        },
+                        {
+                            "name": "pierce",
+                            "description": "Whether or not iframes and shadow roots in the same target should be traversed when returning the\nresults (default is false).",
+                            "optional": true,
+                            "type": "boolean"
+                        }
+                    ],
+                    "returns": [
+                        {
+                            "name": "nodeIds",
+                            "description": "Resulting nodes.",
+                            "type": "array",
+                            "items": {
+                                "$ref": "NodeId"
                             }
                         }
                     ]
@@ -15731,6 +15789,12 @@
                             "$ref": "TargetID"
                         },
                         {
+                            "name": "canAccessOpener",
+                            "description": "Whether the opened window has access to the originating window.",
+                            "experimental": true,
+                            "type": "boolean"
+                        },
+                        {
                             "name": "browserContextId",
                             "experimental": true,
                             "optional": true,
@@ -17947,6 +18011,26 @@
                     ]
                 },
                 {
+                    "id": "LocationRange",
+                    "description": "Location range within one script.",
+                    "experimental": true,
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "scriptId",
+                            "$ref": "Runtime.ScriptId"
+                        },
+                        {
+                            "name": "start",
+                            "$ref": "ScriptPosition"
+                        },
+                        {
+                            "name": "end",
+                            "$ref": "ScriptPosition"
+                        }
+                    ]
+                },
+                {
                     "id": "CallFrame",
                     "description": "JavaScript call frame. Array of call frames form the call stack.",
                     "type": "object",
@@ -18807,6 +18891,16 @@
                             "experimental": true,
                             "optional": true,
                             "type": "boolean"
+                        },
+                        {
+                            "name": "skipList",
+                            "description": "The skipList specifies location ranges that should be skipped on step into.",
+                            "experimental": true,
+                            "optional": true,
+                            "type": "array",
+                            "items": {
+                                "$ref": "LocationRange"
+                            }
                         }
                     ]
                 },
@@ -18816,7 +18910,19 @@
                 },
                 {
                     "name": "stepOver",
-                    "description": "Steps over the statement."
+                    "description": "Steps over the statement.",
+                    "parameters": [
+                        {
+                            "name": "skipList",
+                            "description": "The skipList specifies location ranges that should be skipped on step over.",
+                            "experimental": true,
+                            "optional": true,
+                            "type": "array",
+                            "items": {
+                                "$ref": "LocationRange"
+                            }
+                        }
+                    ]
                 }
             ],
             "events": [

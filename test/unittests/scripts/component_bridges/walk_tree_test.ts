@@ -31,16 +31,7 @@ describe('walkTree', () => {
     const source = createTypeScriptSourceFromFilePath(filePath);
     const result = walkTree(source, filePath);
 
-    assert.deepEqual(Array.from(result.interfaceNamesToConvert), ['Person', 'Dog', 'DogOwner']);
-  });
-
-  it('errors if a user references an interface via a qualifier', () => {
-    const filePath = path.resolve(path.join(fixturesPath, 'component-with-external-interface-import-star.ts'));
-
-    const source = createTypeScriptSourceFromFilePath(filePath);
-    assert.throws(() => {
-      walkTree(source, filePath);
-    }, 'Found an interface that was referenced indirectly. You must reference interfaces directly, rather than via a qualifier. For example, `Person` rather than `Foo.Person`');
+    assert.deepEqual(Array.from(result.typeReferencesToConvert), ['Person', 'Dog', 'DogOwner']);
   });
 
   it('errors loudly if it cannot find an interface', () => {
@@ -59,7 +50,7 @@ describe('walkTree', () => {
     const source = createTypeScriptSourceFile(code);
     assert.throws(
         () => walkTree(source, 'test.ts'),
-        'Could not find definition for interface MissingInterface in the source file or any of its imports.');
+        'Could not find definition for type reference MissingInterface in the source file or any of its imports.');
   });
 
   it('adds any interfaces it finds to state.foundInterfaces', () => {
@@ -104,7 +95,7 @@ describe('walkTree', () => {
       const source = createTypeScriptSourceFile(code);
       const result = walkTree(source, 'test.ts');
 
-      assert.deepEqual(Array.from(result.interfaceNamesToConvert), ['WebVitalsTimelineData', 'WebVitalsTimelineTask']);
+      assert.deepEqual(Array.from(result.typeReferencesToConvert), ['WebVitalsTimelineData', 'WebVitalsTimelineTask']);
     });
 
     it('correctly identifies interfaces that reference arrays of other interfaces', () => {
@@ -125,7 +116,7 @@ describe('walkTree', () => {
       const source = createTypeScriptSourceFile(code);
       const result = walkTree(source, 'test.ts');
 
-      assert.deepEqual(Array.from(result.interfaceNamesToConvert), ['WebVitalsTimelineData', 'WebVitalsTimelineTask']);
+      assert.deepEqual(Array.from(result.typeReferencesToConvert), ['WebVitalsTimelineData', 'WebVitalsTimelineTask']);
     });
 
     it('correctly identifies interfaces that reference interfaces in nested object literals', () => {
@@ -148,7 +139,7 @@ describe('walkTree', () => {
       const source = createTypeScriptSourceFile(code);
       const result = walkTree(source, 'test.ts');
 
-      assert.deepEqual(Array.from(result.interfaceNamesToConvert), ['WebVitalsTimelineData', 'WebVitalsTimelineTask']);
+      assert.deepEqual(Array.from(result.typeReferencesToConvert), ['WebVitalsTimelineData', 'WebVitalsTimelineTask']);
     });
 
     it('correctly identifies interfaces that are deeply nested', () => {
@@ -173,7 +164,7 @@ describe('walkTree', () => {
       const source = createTypeScriptSourceFile(code);
       const result = walkTree(source, 'test.ts');
 
-      assert.deepEqual(Array.from(result.interfaceNamesToConvert), ['WebVitalsTimelineData', 'LongTask', 'Timing']);
+      assert.deepEqual(Array.from(result.typeReferencesToConvert), ['WebVitalsTimelineData', 'LongTask', 'Timing']);
     });
   });
 
@@ -272,7 +263,7 @@ describe('walkTree', () => {
       });
 
       assert.deepEqual(getterNames, ['person']);
-      assert.deepEqual(Array.from(result.interfaceNamesToConvert), ['Person']);
+      assert.deepEqual(Array.from(result.typeReferencesToConvert), ['Person']);
     });
 
     it('finds any public setters and the interfaces they take', () => {
@@ -300,7 +291,7 @@ describe('walkTree', () => {
       });
 
       assert.deepEqual(setterNames, ['foo']);
-      assert.deepEqual(Array.from(result.interfaceNamesToConvert), ['Person']);
+      assert.deepEqual(Array.from(result.typeReferencesToConvert), ['Person']);
     });
 
     it('can parse interfaces out of the Readonly helper type', () => {
@@ -323,7 +314,7 @@ describe('walkTree', () => {
         assert.fail('No component class was found');
       }
 
-      assert.deepEqual(Array.from(result.interfaceNamesToConvert), ['Person']);
+      assert.deepEqual(Array.from(result.typeReferencesToConvert), ['Person']);
     });
 
     it('can parse interfaces out of the ReadonlyArray helper type', () => {
@@ -346,7 +337,7 @@ describe('walkTree', () => {
         assert.fail('No component class was found');
       }
 
-      assert.deepEqual(Array.from(result.interfaceNamesToConvert), ['Person']);
+      assert.deepEqual(Array.from(result.typeReferencesToConvert), ['Person']);
     });
 
 
@@ -379,7 +370,7 @@ describe('walkTree', () => {
       });
 
       assert.deepEqual(setterNames, ['data']);
-      assert.deepEqual(Array.from(result.interfaceNamesToConvert), ['Person', 'Dog']);
+      assert.deepEqual(Array.from(result.typeReferencesToConvert), ['Person', 'Dog']);
     });
 
     it('can deal with setters taking optional arguments', () => {
@@ -411,7 +402,7 @@ describe('walkTree', () => {
       });
 
       assert.deepEqual(setterNames, ['data']);
-      assert.deepEqual(Array.from(result.interfaceNamesToConvert), ['Person', 'Dog']);
+      assert.deepEqual(Array.from(result.typeReferencesToConvert), ['Person', 'Dog']);
     });
 
     it('finds the custom elements define call', () => {
@@ -432,6 +423,156 @@ describe('walkTree', () => {
       const result = walkTree(source, 'test.ts');
 
       assert.isDefined(result.customElementsDefineCall);
+    });
+  });
+
+  describe('enums', () => {
+    it('adds all const enums to the list of found enums', () => {
+      const code = `export const enum SettingType {
+         boolean = 'boolean',
+         enum = 'enum'
+        }`;
+
+      const source = createTypeScriptSourceFile(code);
+      const result = walkTree(source, 'test.ts');
+      assert.strictEqual(result.foundEnums.size, 1);
+    });
+
+    it('correctly identifies which enums need to be included in the Closure bridge', () => {
+      const code = `const enum Name {
+        alice = 'alice',
+        bob = 'bob'
+      }
+
+      const enum NotUsedEnum {
+        x = 'x',
+        y = 'y'
+      }
+
+      class Breadcrumbs extends HTMLElement {
+        public set data(data: {x: Name}) {
+        }
+      }`;
+
+      const source = createTypeScriptSourceFile(code);
+      const result = walkTree(source, 'test.ts');
+      assert.deepEqual(Array.from(result.typeReferencesToConvert), ['Name']);
+    });
+
+    it('correctly finds enums within an interface', () => {
+      const code = `const enum Name {
+        alice = 'alice',
+        bob = 'bob'
+      }
+
+      interface Person {
+        name: Name;
+      }
+
+      class Breadcrumbs extends HTMLElement {
+        public set data(data: {x: Person}) {
+        }
+      }`;
+
+      const source = createTypeScriptSourceFile(code);
+      const result = walkTree(source, 'test.ts');
+      assert.deepEqual(Array.from(result.typeReferencesToConvert), ['Person', 'Name']);
+    });
+
+    it('correctly finds enums deeply nested within types and interfaces', () => {
+      const code = `const enum Name {
+        alice = 'alice',
+        bob = 'bob'
+      }
+
+      type Human = {
+        name: Name
+      }
+
+      interface Person {
+        human: Human
+      }
+
+      class Breadcrumbs extends HTMLElement {
+        public set data(data: {x: Person}) {
+        }
+      }`;
+
+      const source = createTypeScriptSourceFile(code);
+      const result = walkTree(source, 'test.ts');
+      assert.deepEqual(Array.from(result.typeReferencesToConvert), ['Person', 'Human', 'Name']);
+    });
+
+    it('correctly finds enums when an interface is extended', () => {
+      const code = `const enum Name {
+        alice = 'alice',
+        bob = 'bob'
+      }
+
+      interface Human {
+        name: Name
+      }
+
+      interface Person extends Human {
+        age: number;
+      }
+
+      class Breadcrumbs extends HTMLElement {
+        public set data(data: {x: Person}) {
+        }
+      }`;
+
+      const source = createTypeScriptSourceFile(code);
+      const result = walkTree(source, 'test.ts');
+      assert.deepEqual(Array.from(result.typeReferencesToConvert), ['Person', 'Name']);
+    });
+
+    it('correctly finds enums when a type is extended', () => {
+      const code = `const enum Name {
+        alice = 'alice',
+        bob = 'bob'
+      }
+
+      type Human = {
+        name: Name
+      }
+
+      type Person = Human & {
+        age: number;
+      }
+
+      class Breadcrumbs extends HTMLElement {
+        public set data(data: {x: Person}) {
+        }
+      }`;
+
+      const source = createTypeScriptSourceFile(code);
+      const result = walkTree(source, 'test.ts');
+      assert.deepEqual(Array.from(result.typeReferencesToConvert), ['Person', 'Name']);
+    });
+
+    it('errors if the enum is not declared as a const enum', () => {
+      const code = `enum SettingType {
+         boolean = 'boolean',
+         enum = 'enum'
+        }`;
+
+      const source = createTypeScriptSourceFile(code);
+      assert.throws(() => {
+        walkTree(source, 'test.ts');
+      }, 'Found enum SettingType that is not a const enum.');
+    });
+
+    it('errors if the enum is not declared with explicit member values', () => {
+      const code = `const enum SettingType {
+         boolean,
+         enum,
+        }`;
+
+      const source = createTypeScriptSourceFile(code);
+      assert.throws(() => {
+        walkTree(source, 'test.ts');
+      }, 'Found enum SettingType whose members do not have manually defined values.');
     });
   });
 });

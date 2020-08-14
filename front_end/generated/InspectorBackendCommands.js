@@ -618,6 +618,14 @@ export function registerCommands(inspectorBackend) {
       [{'name': 'depth', 'type': 'number', 'optional': true}, {'name': 'pierce', 'type': 'boolean', 'optional': true}],
       ['nodes']);
   inspectorBackend.registerCommand(
+      'DOM.getNodesForSubtreeByStyle',
+      [
+        {'name': 'nodeId', 'type': 'number', 'optional': false},
+        {'name': 'computedStyles', 'type': 'object', 'optional': false},
+        {'name': 'pierce', 'type': 'boolean', 'optional': true}
+      ],
+      ['nodeIds']);
+  inspectorBackend.registerCommand(
       'DOM.getNodeForLocation',
       [
         {'name': 'x', 'type': 'number', 'optional': false}, {'name': 'y', 'type': 'number', 'optional': false},
@@ -2543,9 +2551,14 @@ export function registerCommands(inspectorBackend) {
       ],
       []);
   inspectorBackend.registerCommand(
-      'Debugger.stepInto', [{'name': 'breakOnAsyncCall', 'type': 'boolean', 'optional': true}], []);
+      'Debugger.stepInto',
+      [
+        {'name': 'breakOnAsyncCall', 'type': 'boolean', 'optional': true},
+        {'name': 'skipList', 'type': 'object', 'optional': true}
+      ],
+      []);
   inspectorBackend.registerCommand('Debugger.stepOut', [], []);
-  inspectorBackend.registerCommand('Debugger.stepOver', [], []);
+  inspectorBackend.registerCommand('Debugger.stepOver', [{'name': 'skipList', 'type': 'object', 'optional': true}], []);
 
   // HeapProfiler.
   inspectorBackend.registerEvent('HeapProfiler.addHeapSnapshotChunk', ['chunk']);
